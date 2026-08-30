@@ -114,7 +114,7 @@ public class MainActivity extends Activity {
 
         InputStream in = null;
         try {
-            in = assets.open("www/" + path);
+            in = assets.open("assets/" + path);
             byte[] body = readAll(in);
             Map<String, String> headers = new HashMap<>();
             headers.put("Access-Control-Allow-Origin", ORIGIN);
