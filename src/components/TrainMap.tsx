@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { maplibreGL } from "@maplibre/maplibre-gl-leaflet";
 import type { Train } from "../lib/types";
 import { routeStops, stopInfo, STATIC } from "../lib/staticData";
 
@@ -97,10 +96,11 @@ export function TrainMap({
       maxBoundsViscosity: 1,
       minZoom: 1,
     });
-    // OpenFreeMap (free, open-source vector basemap) — dark style to match the app.
-    maplibreGL({
-      style: "https://tiles.openfreemap.org/styles/dark",
-      attributionControl: false,
+    // CARTO raster basemap (free, no API key) — dark style to match the app.
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: "abcd",
+      maxZoom: 20,
     }).addTo(map);
     // Z-order (bottom -> top): routes, station labels, trains.
     const routes = L.layerGroup().addTo(map);
