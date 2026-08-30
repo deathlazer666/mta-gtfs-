@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 // Freebuff requires HMR to remain disabled.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  base: "./",
   server: {
     host: "0.0.0.0",
     port: Number(process.env.PORT) || 5173,

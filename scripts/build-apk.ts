@@ -92,9 +92,7 @@ r = spawnSync(join(BT, "d8"), [
 ], { stdio: "inherit", env });
 if (r.status !== 0) process.exit(1);
 
-// 4. Add assets + dex to APK
-r = spawnSync(join(BT, "aapt"), ["add", join(WORK, "bin", "base.apk"), "classes.dex"], { cwd: WORK, stdio: "inherit", env });
-// aapt add expects paths relative to cwd; copy dex next to apk dir structure
+// 4. Add dex + assets to APK
 cpSync(join(WORK, "dex", "classes.dex"), join(WORK, "classes.dex"));
 r = spawnSync(join(BT, "aapt"), ["add", join(WORK, "bin", "base.apk"), "classes.dex"], { cwd: WORK, stdio: "inherit", env });
 if (r.status !== 0) process.exit(1);
