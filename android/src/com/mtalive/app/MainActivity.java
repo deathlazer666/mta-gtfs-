@@ -13,35 +13,47 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpHandler;
-import com.sun.net.httpserver.HttpServer;
-
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.net.URLDecoder;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
  * MTA Live — full-screen WebView wrapper around the bundled static site.
  *
  * The site is served to the WebView from a tiny loopback HTTP server embedded
- * in this activity. Loading via http://127.0.0.1:<port>/ (instead of
- * file:///android_asset/...) makes the WebView treat the page as a normal web
- * origin, so ES modules, <script type="module">, fetch() and CORS behave
- * exactly like in a regular browser. This fixes the black screen on Android 9+
- * devices where file:// origins silently block module scripts.
+ * in this activity (plain java.net.ServerSocket — com.sun.net.httpserver is a
+ * desktop-JDK package that does NOT exist in the Android runtime, which is why
+ * the earlier attempt crashed with NoClassDefFoundError on launch).
+ *
+ * Loading via http://127.0.0.1:<port>/ (instead of file:///android_asset/...)
+ * makes the WebView treat the page as a normal web origin, so ES modules,
+ * <script type="module">, fetch() and CORS behave exactly like in a regular
+ * browser. This fixes the black screen on Android 9+ devices.
  */
 public class MainActivity extends Activity {
     private static final int PORT = 8123;
     private static final String START_URL = "http://127.0.0.1:8123/index.html";
 
     private WebView webView;
-    private HttpServer server;
+    private ServerSocket serverSocket;
+    private ExecutorService serverExecutor;
+    private Thread acceptThread;
 
-    private static final String MIME = ".css=text/css;.js=text/javascript;.mjs=text/javascript;.html=text/html;.json=application/json;.svg=image/svg+xml;.png=image/png;.jpg=image/jpeg;.jpeg=image/jpeg;.webp=image/webp;.gif=image/gif;.ico=image/x-icon;.woff=font/woff;.woff2=font/woff2;.ttf=font/ttf;.map=application/json;.txt=text/plain;.wasm=application/wasm";
+    private static final String MIME =
+            ".css=text/css;.js=text/javascript;.mjs=text/javascript;.html=text/html"
+            + ";.json=application/json;.svg=image/svg+xml;.png=image/png;.jpg=image/jpeg"
+            + ";.jpeg=image/jpeg;.webp=image/webp;.gif=image/gif;.ico=image/x-icon"
+            + ";.woff=font/woff;.woff2=font/woff2;.ttf=font/ttf;.map=application/json"
+            + ";.txt=text/plain;.wasm=application/wasm";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,14 +91,26 @@ public class MainActivity extends Activity {
         }
     }
 
-    /** Serve bundled web assets over loopback HTTP. */
+    /** Serve bundled web assets over loopback HTTP (plain ServerSocket). */
     private void startAssetServer() {
         try {
-            HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", PORT), 0);
-            server.createContext("/", new AssetHandler(getAssets()));
-            server.setExecutor(Executors.newSingleThreadExecutor());
-            server.start();
-            this.server = server;
+            serverSocket = new ServerSocket(PORT, 64, InetAddress.getByName("127.0.0.1"));
+            serverExecutor = Executors.newFixedThreadPool(4);
+            final AssetManager assets = getAssets();
+            acceptThread = new Thread(() -> {
+                while (!Thread.currentThread().isInterrupted()
+                        && serverSocket != null && !serverSocket.isClosed()) {
+                    try {
+                        final Socket socket = serverSocket.accept();
+                        serverExecutor.execute(() -> handleConnection(socket, assets));
+                    } catch (IOException e) {
+                        // Socket closed during shutdown — exit quietly.
+                        return;
+                    }
+                }
+            }, "asset-server-accept");
+            acceptThread.setDaemon(true);
+            acceptThread.start();
         } catch (IOException e) {
             // Loopback server failed to bind — fall back to file:// assets so
             // the app still renders something rather than a black screen.
@@ -94,20 +118,35 @@ public class MainActivity extends Activity {
         }
     }
 
-    private static class AssetHandler implements HttpHandler {
-        private final AssetManager assets;
+    /** Handle a single loopback HTTP connection. */
+    private static void handleConnection(Socket socket, AssetManager assets) {
+        try (Socket s = socket) {
+            s.setSoTimeout(5000);
+            BufferedReader reader =
+                    new BufferedReader(new InputStreamReader(s.getInputStream(), "UTF-8"));
 
-        AssetHandler(AssetManager assets) {
-            this.assets = assets;
-        }
+            String requestLine = reader.readLine();
+            if (requestLine == null || !requestLine.startsWith("GET")) {
+                return; // HEAD/POST etc. are not needed for the static site
+            }
+            // Drain the remaining request headers until the blank line.
+            String line;
+            while ((line = reader.readLine()) != null && !line.isEmpty()) {
+                // skip header lines
+            }
 
-        @Override
-        public void handle(HttpExchange exchange) throws IOException {
-            String path = exchange.getRequestURI().getPath();
-            if (path == null || path.equals("/") || !path.contains(".")) {
+            String rawPath = requestLine.split(" ")[1];
+            String path = URLDecoder.decode(rawPath, "UTF-8");
+            if (path.equals("/") || !path.contains(".")) {
                 path = "/index.html";
             }
             path = path.substring(1); // strip leading slash for asset lookup
+            // Normalize: strip "./" segments; reject any "..".
+            path = path.replace("./", "");
+            if (path.contains("..")) {
+                writeResponse(s, 400, "text/plain", "Bad request".getBytes("UTF-8"));
+                return;
+            }
 
             String mime = "application/octet-stream";
             int dot = path.lastIndexOf('.');
@@ -125,33 +164,42 @@ public class MainActivity extends Activity {
             try {
                 in = assets.open("www/" + path);
                 byte[] body = readAll(in);
-                exchange.getResponseHeaders().set("Content-Type", mime);
-                exchange.getResponseHeaders().set("Cache-Control", "max-age=3600");
-                exchange.sendResponseHeaders(200, body.length);
-                OutputStream out = exchange.getResponseBody();
-                out.write(body);
-                out.close();
+                writeResponse(s, 200, mime, body);
             } catch (IOException e) {
-                byte[] body = "Not found".getBytes("UTF-8");
-                exchange.sendResponseHeaders(404, body.length);
-                exchange.getResponseBody().write(body);
-                exchange.close();
+                writeResponse(s, 404, "text/plain", "Not found".getBytes("UTF-8"));
             } finally {
                 if (in != null) {
                     try { in.close(); } catch (IOException ignored) {}
                 }
             }
+        } catch (Exception ignored) {
+            // Never let a malformed request kill the server thread.
         }
+    }
 
-        private static byte[] readAll(InputStream in) throws IOException {
-            ByteArrayOutputStream buf = new ByteArrayOutputStream();
-            byte[] chunk = new byte[8192];
-            int n;
-            while ((n = in.read(chunk)) > 0) {
-                buf.write(chunk, 0, n);
-            }
-            return buf.toByteArray();
+    private static void writeResponse(Socket socket, int status, String mime, byte[] body)
+            throws IOException {
+        OutputStream out = socket.getOutputStream();
+        String statusText = status == 200 ? "OK" : status == 404 ? "Not Found" : "Bad Request";
+        String headers = "HTTP/1.1 " + status + " " + statusText + "\r\n"
+                + "Content-Type: " + mime + "\r\n"
+                + "Content-Length: " + body.length + "\r\n"
+                + "Cache-Control: max-age=3600\r\n"
+                + "Connection: close\r\n"
+                + "\r\n";
+        out.write(headers.getBytes("UTF-8"));
+        out.write(body);
+        out.flush();
+    }
+
+    private static byte[] readAll(InputStream in) throws IOException {
+        ByteArrayOutputStream buf = new ByteArrayOutputStream();
+        byte[] chunk = new byte[8192];
+        int n;
+        while ((n = in.read(chunk)) > 0) {
+            buf.write(chunk, 0, n);
         }
+        return buf.toByteArray();
     }
 
     @Override
@@ -199,9 +247,18 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
-        if (server != null) {
-            server.stop(0);
-            server = null;
+        try {
+            if (serverSocket != null && !serverSocket.isClosed()) {
+                serverSocket.close();
+            }
+        } catch (IOException ignored) {}
+        if (acceptThread != null) {
+            acceptThread.interrupt();
+            acceptThread = null;
+        }
+        if (serverExecutor != null) {
+            serverExecutor.shutdownNow();
+            serverExecutor = null;
         }
         if (webView != null) {
             webView.destroy();
