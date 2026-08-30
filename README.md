@@ -38,13 +38,17 @@ Data & logos are © MTA; feeds are public and free to use without a key.
 
 ## Desktop executables
 
-You can ship this as a no-install desktop app. `bun run build:desktop` bundles the
-built site (and a copy of the Bun runtime) into standalone, self-contained
-executables for Windows and Linux:
+You can ship this as a no-install desktop app. `bun run build:desktop` bundles
+the built site with a pure-Node launcher (via `pkg`) into standalone,
+self-contained executables for Windows and Linux:
 
 ```bash
 bun run build:desktop   # builds dist/, then compiles desk/mta-tracker.exe + desk/mta-tracker
 ```
+
+Because the launcher is Node (not Bun), the binaries run on **any x86_64 CPU** —
+no AVX2/SSE4.2 requirement, so they won't crash with `Illegal instruction` on
+older or low-end chips.
 
 Outputs land in `desk/`:
 
@@ -64,8 +68,8 @@ chmod +x desk/install-linux.sh
 ```
 
 You can then launch it from the menu/app launcher, or run `./desk/mta-tracker`
-directly from a terminal. If the browser doesn't open automatically, check
-`~/.local/share/mta-tracker/mta-tracker.log`.
+directly from a terminal (useful on Hyprland/TWM setups). If the browser doesn't
+open automatically, check `~/.local/share/mta-tracker/mta-tracker.log`.
 
-The launcher is `desktop/serve.ts`; it embeds everything via Bun's `--asset`
-cross-compile (Windows build is done from any OS — see `scripts/build-desktop.ts`).
+The launcher (`desktop/serve-node.cjs`) and build config are under
+`pkg.config.json` / `scripts/build-desktop.ts`.
