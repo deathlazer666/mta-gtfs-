@@ -43,20 +43,35 @@ for (const t of targets) {
 // Write a README alongside the binaries.
 const note = `# MTA Live — desktop build
 
-Single-file, self-contained desktop executable for the MTA real-time tracker.
-No install or runtime needed — double-click to run. It serves the app locally and
-opens your default browser.
+Self-contained desktop executables for the MTA real-time tracker. No install or
+runtime needed. Each serves the app locally and opens your default browser.
 
 ## Windows
-  mta-tracker.exe   (x64)
+  mta-tracker.exe   (x64) — double-click to run
 
 ## Linux (Arch / any glibc distro)
-  ./mta-tracker     (x64)
+File managers rarely launch a bare executable on double-click, so use the installer:
 
-Close the small window (or Ctrl+C) to stop the app.
+  chmod +x ./install-linux.sh
+  ./install-linux.sh <path-to-mta-tracker>     # e.g. ./install-linux.sh ./mta-tracker
+
+This registers an "MTA Live" entry in your application menu (GNOME/KDE/XFCE),
+which you can then launch by double-click or from the launcher.
+
+Alternatively, run it directly from a terminal:
+
+  ./mta-tracker
+
+If the browser doesn't open automatically, read the log:
+  tail -f ~/.local/share/mta-tracker/mta-tracker.log
+
+Close the window (or Ctrl+C) to stop the app.
 Data © MTA, used from its public feeds without a key.
 `;
 const { writeFileSync } = await import("node:fs");
 writeFileSync(join(OUT, "README.md"), note);
-console.log(`\nWrote executables + README to ${OUT}`);
+// Ship the Linux installer too.
+copyFileSync(join(ROOT, "desktop", "install-linux.sh"), join(OUT, "install-linux.sh"));
+console.log(`\nWrote executables + README + install-linux.sh to ${OUT}`);
 for (const t of targets) console.log("  -", t.outfile.replace(ROOT, "./"));
+console.log("  -", "install-linux.sh");

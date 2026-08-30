@@ -51,10 +51,21 @@ Outputs land in `desk/`:
 - `mta-tracker.exe` — Windows x64
 - `mta-tracker` — Linux x64 (works on Arch, any glibc distro)
 
-Each double-click / runs a tiny local server, opens your default browser to
-`http://127.0.0.1:4317/`, and serves the whole app (including the live MTA
-feeds) with no other dependencies. Close the window (or Ctrl+C) to stop. On
-Linux run `chmod +x desk/mta-tracker && ./desk/mta-tracker`.
+Each runs a tiny local server, opens your default browser, and serves the whole
+app (including the live MTA feeds) with no other dependencies. Close the window
+(or Ctrl+C) to stop.
+
+**Linux (Arch etc.):** file managers rarely launch a bare executable on
+double-click, so use the installer to register it in your app menu:
+
+```bash
+chmod +x desk/install-linux.sh
+./desk/install-linux.sh desk/mta-tracker   # adds an "MTA Live" menu entry
+```
+
+You can then launch it from the menu/app launcher, or run `./desk/mta-tracker`
+directly from a terminal. If the browser doesn't open automatically, check
+`~/.local/share/mta-tracker/mta-tracker.log`.
 
 The launcher is `desktop/serve.ts`; it embeds everything via Bun's `--asset`
 cross-compile (Windows build is done from any OS — see `scripts/build-desktop.ts`).
