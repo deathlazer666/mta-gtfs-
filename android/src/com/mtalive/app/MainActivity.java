@@ -15,7 +15,7 @@ import android.webkit.WebViewClient;
  * WebViewAssetLoader-equivalent mapping (file:///android_asset/www/).
  */
 public class MainActivity extends Activity {
-    private static final String START_URL = "file:///android_asset/www/index.html";
+    private static final String START_URL = "file:///android_asset/index.html";
 
     private WebView webView;
 
