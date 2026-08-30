@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { maplibreGL } from "@maplibre/maplibre-gl-leaflet";
 import type { Train } from "../lib/types";
 import { routeStops, stopInfo, STATIC } from "../lib/staticData";
 
@@ -85,22 +87,21 @@ export function TrainMap({
   // Init map once.
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const map = L.map(containerRef.current, { center: NYC, zoom: 11, zoomControl: true, attributionControl: true });
-    // When served by the desktop app, basemap tiles go through a local proxy that
-    // injects the CARTO key server-side, so the key never reaches the browser. On the
-    // web build (no server) we fall back to CARTO's free anonymous tiles (no key).
-    const addTiles = (url: string, subdomains?: string) =>
-      L.tileLayer(url, { attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains: subdomains || "abcd", maxZoom: 19 }).addTo(map);
-    fetch("/__cfg", { cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg) => {
-        if (cfg && cfg.desktop && cfg.cartoKeyed) {
-          addTiles("/carto/{z}/{x}/{y}.png");
-        } else {
-          addTiles("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
-        }
-      })
-      .catch(() => addTiles("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"));
+    const map = L.map(containerRef.current, {
+      center: NYC,
+      zoom: 11,
+      zoomControl: true,
+      attributionControl: true,
+      // MapLibre GL restricts max latitude; constrain panning to avoid sync issues.
+      maxBounds: [[85, -Infinity], [-85, Infinity]] as [L.LatLngTuple, L.LatLngTuple],
+      maxBoundsViscosity: 1,
+      minZoom: 1,
+    });
+    // OpenFreeMap (free, open-source vector basemap) — dark style to match the app.
+    maplibreGL({
+      style: "https://tiles.openfreemap.org/styles/dark",
+      attributionControl: false,
+    }).addTo(map);
     // Z-order (bottom -> top): routes, station labels, trains.
     const routes = L.layerGroup().addTo(map);
     const stations = L.layerGroup().addTo(map);
