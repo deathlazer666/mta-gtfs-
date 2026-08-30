@@ -9,6 +9,8 @@ export interface StaticData {
   headsigns: Record<string, string>;
   /** routeId -> array of flat [lat*1e5, lon*1e5, ...] polylines */
   paths: Record<string, number[][]>;
+  /** routeId -> station stop_ids served by that route */
+  routeStops: Record<string, string[]>;
 }
 
 export const STATIC: Record<string, StaticData> = {
@@ -23,6 +25,11 @@ export function stopInfo(agency: string, stopId: string): StopInfo | undefined {
 
 export function routeInfo(agency: string, routeId: string): RouteInfo | undefined {
   return STATIC[agency]?.routes[routeId];
+}
+
+/** Station stop_ids served by a route (subway direction-suffixes stripped). */
+export function routeStops(agency: string, routeId: string): string[] {
+  return STATIC[agency]?.routeStops?.[routeId] ?? [];
 }
 
 export function headsign(agency: string, tripId: string): string | undefined {

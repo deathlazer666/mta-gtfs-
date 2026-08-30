@@ -77,7 +77,7 @@ function simplify(points, tol) {
 
 function build(name, buffer) {
   const files = unzipSync(buffer);
-  const result = { stops: {}, routes: {}, headsigns: {}, paths: {} };
+  const result = { stops: {}, routes: {}, headsigns: {}, paths: {}, routeStops: {} };
 
   const stops = parseTxt(files, "stops.txt");
   const parentNames = {};
@@ -97,6 +97,52 @@ function build(name, buffer) {
   if (name === "lirr") {
     const trips = parseTxt(files, "trips.txt");
     for (const t of trips) { if (t.trip_headsign) result.headsigns[t.trip_id] = t.trip_headsign; }
+  }
+
+  // route -> station stop_ids served by that route (from trips + stop_times),
+  // normalized to station level (strip direction suffix on subway platforms).
+  if (files["trips.txt"] && files["stop_times.txt"]) {
+    const tripRoute = {};
+    const stripDir = (id) => (name === "subway" ? id.replace(/[NS]$/, "") : id);
+    let hOffset = 0;
+    // trips.txt: header then trip_id -> route_id.
+    const tripsText = new TextDecoder().decode(files["trips.txt"]);
+    {
+      let first = true;
+      let ti = 0, ri = 0;
+      for (const l of tripsText.split(/\r?\n/)) {
+        if (!l.trim()) continue;
+        const cells = parseCSV(l)[0];
+        if (first) { ti = cells.map((h) => h.replace(/"|:$/g, "").trim()).indexOf("trip_id"); ri = cells.map((h) => h.replace(/"|:$/g, "").trim()).indexOf("route_id"); first = false; continue; }
+        if (cells[ti] && cells[ri]) tripRoute[cells[ti]] = cells[ri];
+      }
+    }
+    hOffset = 0;
+    // stop_times.txt: stream and collect station ids per route.
+    const stopText = new TextDecoder().decode(files["stop_times.txt"]);
+    {
+      let first = true;
+      let stIdx = 0, ssIdx = 0;
+      const routeStops = {};
+      for (const l of stopText.split(/\r?\n/)) {
+        if (!l.trim()) continue;
+        const cells = parseCSV(l)[0];
+        if (first) {
+          const h = cells.map((x) => x.replace(/"|:$/g, "").trim());
+          stIdx = h.indexOf("trip_id"); ssIdx = h.indexOf("stop_id");
+          first = false; continue;
+        }
+        const rid = tripRoute[cells[stIdx]];
+        if (!rid || !cells[ssIdx]) continue;
+        const sid = stripDir(cells[ssIdx]);
+        if (!routeStops[rid]) routeStops[rid] = new Set();
+        const key = result.stops[sid] ? sid : (result.stops[cells[ssIdx]] ? cells[ssIdx] : null);
+        if (key) routeStops[rid].add(key);
+      }
+      result.routeStops = {};
+      for (const [rid, set] of Object.entries(routeStops)) result.routeStops[rid] = [...set];
+    }
+    void hOffset;
   }
 
   // Build route paths from shapes.txt (dedupe shapes, simplify to keep the bundle small).
@@ -136,7 +182,8 @@ function build(name, buffer) {
 
   const hsKey = Object.keys(result.headsigns).length;
   const pathKey = Object.keys(result.paths).length;
-  console.log(`   ${name}: ${Object.keys(result.stops).length} stops, ${Object.keys(result.routes).length} routes, ${hsKey} headsigns, ${pathKey} routes w/ paths`);
+  const rsKey = Object.keys(result.routeStops).length;
+  console.log(`   ${name}: ${Object.keys(result.stops).length} stops, ${Object.keys(result.routes).length} routes, ${hsKey} headsigns, ${pathKey} routes w/ paths, ${rsKey} routes w/ stop lists`);
   return result;
 }
 

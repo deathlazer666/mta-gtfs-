@@ -70,6 +70,37 @@ body {
   border: none;
 }
 
+/* --- Station labels (shown when a train's line is selected) --- */
+.station-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.station-label .sl-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  background: var(--st-color, #4ecdc4);
+  border: 1.5px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+.station-label .sl-name {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  color: #e6e9ef;
+  background: rgba(7, 9, 13, 0.78);
+  padding: 1px 6px;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  letter-spacing: 0.2px;
+}
+
 /* --- Train markers --- */
 .train-marker {
   position: relative;

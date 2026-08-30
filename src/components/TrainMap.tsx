@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Train } from "../lib/types";
+import { routeStops, stopInfo } from "../lib/staticData";
 
 export interface RoutePathData {
   agency: string;
@@ -73,6 +74,7 @@ export function TrainMap({
   const mapRef = useRef<L.Map | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const routesRef = useRef<L.LayerGroup | null>(null);
+  const stationsRef = useRef<L.LayerGroup | null>(null);
   const onSelectRef = useRef(onSelect);
   const onClickRouteRef = useRef(onClickRoute);
   onSelectRef.current = onSelect;
@@ -87,16 +89,20 @@ export function TrainMap({
       subdomains: "abcd",
       maxZoom: 19,
     }).addTo(map);
-    const markers = L.layerGroup().addTo(map);
+    // Z-order (bottom -> top): routes, station labels, trains.
     const routes = L.layerGroup().addTo(map);
+    const stations = L.layerGroup().addTo(map);
+    const markers = L.layerGroup().addTo(map);
     markersRef.current = markers;
     routesRef.current = routes;
+    stationsRef.current = stations;
     mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
       markersRef.current = null;
       routesRef.current = null;
+      stationsRef.current = null;
     };
   }, []);
 
@@ -133,6 +139,32 @@ export function TrainMap({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routePaths, activeRoute]);
+
+  // Station labels: show stops along the selected train's line (subway & Metro-North),
+  // so clicking a train reveals the stations on that line. Hidden when nothing selected.
+  useEffect(() => {
+    const lg = stationsRef.current;
+    if (!lg) return;
+    lg.clearLayers();
+    if (!selectedId) return;
+    const sel = trains.find((t) => t.id === selectedId);
+    if (!sel) return;
+    if (sel.agency !== "subway" && sel.agency !== "mnr") return;
+    const ids = routeStops(sel.agency, sel.routeId);
+    const color = sel.routeColor || "#4ecdc4";
+    for (const sid of ids) {
+      const s = stopInfo(sel.agency, sid);
+      if (!s) continue;
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="station-label" style="--st-color:${color}"><span class="sl-dot"></span><span class="sl-name">${escapeHtml(s.name)}</span></div>`,
+        iconSize: L.point(0, 0),
+        iconAnchor: L.point(6, 6),
+      });
+      const m = L.marker([s.lat, s.lon], { icon, keyboard: false }).bindPopup(`<div class="tm-pop"><div class="tm-pop-title">${escapeHtml(s.name)}</div><div class="tm-pop-status">${sel.agency === "subway" ? "Subway" : "Metro-North"} station</div></div>`, { className: "tm-popup", closeButton: false });
+      m.addTo(lg);
+    }
+  }, [trains, selectedId]);
 
   // Sync markers with trains.
   useEffect(() => {
