@@ -8,7 +8,7 @@ const { join, dirname, extname } = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 const os = require("node:os");
 
-const VERSION = "0.1.8";
+const VERSION = "0.1.10";
 const START = Date.now();
 
 // Find dist: pkg embeds it under __dirname (snapshot fs); during dev runs fall back to repo root.
