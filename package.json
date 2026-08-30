@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "generate:static": "bun scripts/generate-static.ts",
+    "update:gtfs": "bun scripts/update-static-daily.ts",
     "build:desktop": "bun run build && bun scripts/build-desktop.ts"
   },
   "dependencies": {
