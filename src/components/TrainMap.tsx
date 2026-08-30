@@ -86,7 +86,14 @@ export function TrainMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, { center: NYC, zoom: 11, zoomControl: true, attributionControl: true });
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    // CARTO basemap. If a CARTO API key is provided in the environment, append it
+    // so the tiles are served against the keyed CARTO basemap account.
+    const cartoKey =
+      (import.meta as any).env?.VITE_CARTO_API_KEY ||
+      (import.meta as any).env?.VITE_CARTO_KEY ||
+      "";
+    const keyParams = cartoKey ? `?api_key=${encodeURIComponent(cartoKey)}` : "";
+    L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${keyParams}`, {
       attribution: "&copy; OpenStreetMap &copy; CARTO",
       subdomains: "abcd",
       maxZoom: 19,
