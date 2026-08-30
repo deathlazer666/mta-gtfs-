@@ -150,9 +150,11 @@ function build(name, buffer) {
     const shapePts = new Map();
     for (const s of parseTxt(files, "shapes.txt")) {
       if (!shapePts.has(s.shape_id)) shapePts.set(s.shape_id, []);
-      shapePts.get(s.shape_id).push([Number(s.shape_pt_lat), Number(s.shape_pt_lon)]);
+      shapePts.get(s.shape_id).push({ seq: Number(s.shape_pt_sequence), lat: Number(s.shape_pt_lat), lon: Number(s.shape_pt_lon) });
     }
-    // shapes.txt is already ordered by shape_pt_sequence; no sort needed.
+    // Do NOT trust file order: the MNR feed interleaves points from parallel tracks
+    // (e.g. shape 21 mixes seq ~663-672 with ~839-855). Always sort by sequence.
+    for (const pts of shapePts.values()) pts.sort((a, b) => a.seq - b.seq);
     // route -> set of shape_ids (from trips)
     const routeShapes = new Map();
     if (files["trips.txt"]) {
@@ -167,7 +169,7 @@ function build(name, buffer) {
     for (const [routeId, shapes] of routeShapes) {
       const paths = [];
       for (const sid of shapes) {
-        const raw = shapePts.get(sid) || [];
+        const raw = (shapePts.get(sid) || []).map((p) => [p.lat, p.lon]);
         if (raw.length < 2) continue;
         const clean = raw.map((p) => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5]);
         const key = clean.map((p) => p.join(",")).join(";");
