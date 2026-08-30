@@ -8,7 +8,7 @@ import { RouteFilter } from "./components/RouteFilter";
 import { useLive } from "./hooks/useLive";
 import { ALL_ROUTES, routePolyLines, routeLabel, LegendRoute } from "./lib/staticData";
 import type { Agency, Train } from "./lib/types";
-import { StopCircle } from "lucide-react";
+import { StopCircle, MapPinned } from "lucide-react";
 
 const routeKey = (a: string, r: string) => `${a}:${r}`;
 
@@ -18,6 +18,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mapApi, setMapApi] = useState<MapImperative | null>(null);
   const [hideLayovers, setHideLayovers] = useState(false);
+  const [showAllStations, setShowAllStations] = useState(false);
   const [hiddenRoutes, setHiddenRoutes] = useState<Set<string>>(new Set());
   const [activeRoute, setActiveRoute] = useState<string | null>(null);
 
@@ -108,6 +109,7 @@ export default function App() {
           selectedId={selectedId}
           routePaths={routePaths}
           activeRoute={activeRoute}
+          showAllStations={showAllStations}
           onSelect={setSelectedId}
           onClickRoute={clickRoute}
           onMapInstance={setMapApi}
@@ -125,14 +127,24 @@ export default function App() {
           />
         </div>
 
-        {/* Layover toggle */}
-        <button
-          onClick={() => setHideLayovers((h) => !h)}
-          className="absolute left-4 top-4 z-[510] flex items-center gap-1.5 rounded-lg border border-edge bg-panel px-3 py-1.5 text-[11px] font-semibold text-[#c8cdd6] shadow-lg backdrop-blur"
-        >
-          <StopCircle className="h-3.5 w-3.5" />
-          {hideLayovers ? "Show layovers" : "Hide layovers"}
-        </button>
+        {/* Top-left toggles: layover hide + show-all station labels */}
+        <div className="absolute left-4 top-4 z-[510] flex items-center gap-2">
+          <button
+            onClick={() => setHideLayovers((h) => !h)}
+            className="flex items-center gap-1.5 rounded-lg border border-edge bg-panel px-3 py-1.5 text-[11px] font-semibold text-[#c8cdd6] shadow-lg backdrop-blur"
+          >
+            <StopCircle className="h-3.5 w-3.5" />
+            {hideLayovers ? "Show layovers" : "Hide layovers"}
+          </button>
+          <button
+            onClick={() => setShowAllStations((s) => !s)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur ${showAllStations ? "border-accent bg-accent/15 text-accent" : "border-edge bg-panel text-[#c8cdd6]"}`}
+            title="Label every subway & Metro-North station"
+          >
+            <MapPinned className="h-3.5 w-3.5" />
+            Station labels
+          </button>
+        </div>
 
         {/* Left panel: train board */}
         <div className="absolute left-16 top-4 bottom-20 z-[500] flex w-80 flex-col">

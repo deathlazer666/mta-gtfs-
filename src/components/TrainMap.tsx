@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import type { Train } from "../lib/types";
-import { routeStops, stopInfo } from "../lib/staticData";
+import { routeStops, stopInfo, STATIC } from "../lib/staticData";
 
 export interface RoutePathData {
   agency: string;
@@ -58,6 +58,7 @@ export function TrainMap({
   selectedId,
   routePaths,
   activeRoute,
+  showAllStations,
   onSelect,
   onClickRoute,
   onMapInstance,
@@ -66,6 +67,7 @@ export function TrainMap({
   selectedId: string | null;
   routePaths: RoutePathData[];
   activeRoute: string | null; // "agency:routeId"
+  showAllStations: boolean;
   onSelect: (id: string | null) => void;
   onClickRoute: (agency: string, routeId: string) => void;
   onMapInstance?: (m: MapImperative) => void;
@@ -140,31 +142,51 @@ export function TrainMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routePaths, activeRoute]);
 
-  // Station labels: show stops along the selected train's line (subway & Metro-North),
-  // so clicking a train reveals the stations on that line. Hidden when nothing selected.
+  // Station labels. Two modes:
+  //  - showAllStations: label every subway & Metro-North station (grouped by line color).
+  //  - otherwise: label the stations along the selected train's line; hidden if none selected.
   useEffect(() => {
     const lg = stationsRef.current;
     if (!lg) return;
     lg.clearLayers();
-    if (!selectedId) return;
-    const sel = trains.find((t) => t.id === selectedId);
-    if (!sel) return;
-    if (sel.agency !== "subway" && sel.agency !== "mnr") return;
-    const ids = routeStops(sel.agency, sel.routeId);
-    const color = sel.routeColor || "#4ecdc4";
-    for (const sid of ids) {
-      const s = stopInfo(sel.agency, sid);
-      if (!s) continue;
+
+    const addOne = (agency: string, stopKey: string, color: string, agencyName: string) => {
+      const s = stopInfo(agency, stopKey);
+      if (!s) return;
       const icon = L.divIcon({
         className: "",
         html: `<div class="station-label" style="--st-color:${color}"><span class="sl-dot"></span><span class="sl-name">${escapeHtml(s.name)}</span></div>`,
         iconSize: L.point(0, 0),
         iconAnchor: L.point(6, 6),
       });
-      const m = L.marker([s.lat, s.lon], { icon, keyboard: false }).bindPopup(`<div class="tm-pop"><div class="tm-pop-title">${escapeHtml(s.name)}</div><div class="tm-pop-status">${sel.agency === "subway" ? "Subway" : "Metro-North"} station</div></div>`, { className: "tm-popup", closeButton: false });
+      const m = L.marker([s.lat, s.lon], { icon, keyboard: false }).bindPopup(`<div class="tm-pop"><div class="tm-pop-title">${escapeHtml(s.name)}</div><div class="tm-pop-status">${agencyName} station</div></div>`, { className: "tm-popup", closeButton: false });
       m.addTo(lg);
+    };
+
+    if (showAllStations) {
+      for (const agency of ["subway", "mnr"] as const) {
+        const data = STATIC[agency];
+        const agencyName = agency === "subway" ? "Subway" : "Metro-North";
+        const seen = new Set<string>();
+        for (const [sid, s] of Object.entries(data.stops)) {
+          // Skip duplicate platform entries that share a station name.
+          const key = `${s.name.toUpperCase()}|${s.lat.toFixed(3)}|${s.lon.toFixed(3)}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          addOne(agency, sid, agency === "subway" ? "#ee352e" : "#0039a6", agencyName);
+        }
+      }
+      return;
     }
-  }, [trains, selectedId]);
+
+    if (!selectedId) return;
+    const sel = trains.find((t) => t.id === selectedId);
+    if (!sel) return;
+    if (sel.agency !== "subway" && sel.agency !== "mnr") return;
+    const ids = routeStops(sel.agency, sel.routeId);
+    const color = sel.routeColor || "#4ecdc4";
+    for (const sid of ids) addOne(sel.agency, sid, color, sel.agency === "subway" ? "Subway" : "Metro-North");
+  }, [trains, selectedId, showAllStations]);
 
   // Sync markers with trains.
   useEffect(() => {
