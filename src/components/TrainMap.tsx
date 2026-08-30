@@ -1,7 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import "maplibre-gl/dist/maplibre-gl.css";
+import { Sun, Moon } from "lucide-react";
 import type { Train } from "../lib/types";
 import { routeStops, stopInfo, STATIC } from "../lib/staticData";
 
@@ -18,6 +18,19 @@ export interface MapImperative {
 }
 
 const NYC = [40.75, -73.985] as [number, number];
+
+type MapStyle = "dark" | "light";
+
+const BASEMAPS: Record<MapStyle, { url: string; label: string }> = {
+  dark: {
+    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+    label: "Dark",
+  },
+  light: {
+    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+    label: "Light",
+  },
+};
 
 function badgeLabel(t: Train): string {
   if (t.agency === "subway") return t.routeShort.split(" ")[0];
@@ -75,9 +88,11 @@ export function TrainMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const basemapRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const routesRef = useRef<L.LayerGroup | null>(null);
   const stationsRef = useRef<L.LayerGroup | null>(null);
+  const [mapStyle, setMapStyle] = useState<MapStyle>("dark");
   const onSelectRef = useRef(onSelect);
   const onClickRouteRef = useRef(onClickRoute);
   onSelectRef.current = onSelect;
@@ -96,8 +111,8 @@ export function TrainMap({
       maxBoundsViscosity: 1,
       minZoom: 1,
     });
-    // CARTO raster basemap (free, no API key) — dark style to match the app.
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    // CARTO raster basemap (free, no API key) — dark by default to match the app.
+    basemapRef.current = L.tileLayer(BASEMAPS.dark.url, {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
       subdomains: "abcd",
       maxZoom: 20,
@@ -118,6 +133,19 @@ export function TrainMap({
       stationsRef.current = null;
     };
   }, []);
+
+  // Swap basemap tiles when the style toggle changes.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !basemapRef.current) return;
+    basemapRef.current.remove();
+    basemapRef.current = L.tileLayer(BASEMAPS[mapStyle].url, {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      subdomains: "abcd",
+      maxZoom: 20,
+    }).addTo(map);
+    basemapRef.current.bringToBack();
+  }, [mapStyle]);
 
   // Sync route polylines.
   useEffect(() => {
@@ -240,7 +268,19 @@ export function TrainMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return <div ref={containerRef} className="h-full w-full" />;
+  return (
+    <div className="relative h-full w-full">
+      <div ref={containerRef} className="h-full w-full" />
+      <button
+        onClick={() => setMapStyle((s) => (s === "dark" ? "light" : "dark"))}
+        className="absolute right-4 top-4 z-[520] flex items-center gap-1.5 rounded-lg border border-edge bg-panel px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur transition-colors hover:border-accent/60"
+        title={`Switch to ${mapStyle === "dark" ? "light" : "dark"} basemap`}
+      >
+        {mapStyle === "dark" ? <Sun className="h-3.5 w-3.5 text-accent" /> : <Moon className="h-3.5 w-3.5 text-accent" />}
+        {BASEMAPS[mapStyle].label}
+      </button>
+    </div>
+  );
 }
 
 function routeName(r: RoutePathData): string {
