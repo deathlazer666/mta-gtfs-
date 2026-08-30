@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.mtalive.app"
-    android:versionCode="14"
-    android:versionName="0.1.13">
+    android:versionCode="15"
+    android:versionName="0.1.14">
 
     <uses-sdk android:minSdkVersion="28" android:targetSdkVersion="34" />
 
@@ -11,6 +11,7 @@
     <application
         android:label="MTA Live"
         android:usesCleartextTraffic="false"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:hardwareAccelerated="true">
 
         <activity
