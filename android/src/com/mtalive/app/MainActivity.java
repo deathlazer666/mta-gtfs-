@@ -29,10 +29,15 @@ import java.util.Map;
  * (https://appassets.mtalive.local/). This is the WebViewAssetLoader pattern
  * without the androidx dependency: the WebView sees a normal secure origin, so
  * ES modules (<script type="module">), fetch() and CORS all behave exactly
- * like in a regular browser. Unlike a file:// URL this cannot produce the
- * black screen on Android 9-10 devices, and unlike a loopback server it needs
- * no socket, no port, and no cleartext policy exceptions — it works on any
- * WebView, including the older ones shipped on LineageOS / Fire OS.
+ * like in a regular browser.
+ *
+ * Why this and not file:// or a loopback HTTP server:
+ *  - file:// silently blocks module scripts on Android 9-10 -> black screen.
+ *  - a loopback ServerSocket depends on the device permitting an app to bind
+ *    127.0.0.1 and on the WebView being allowed to fetch http://127.0.0.1
+ *    (cleartext policy) — several LineageOS builds break one or the other,
+ *    which also ends in a black screen. Request interception has no socket,
+ *    no port, and no cleartext policy dependency: it works on any WebView.
  */
 public class MainActivity extends Activity {
     private static final String ORIGIN = "https://appassets.mtalive.local";
