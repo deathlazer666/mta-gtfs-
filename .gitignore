@@ -2,6 +2,11 @@ node_modules
 dist
 desk
 .vite
-*.local
 .DS_Store
 tsconfig.tsbuildinfo
+
+# secrets & env
+.env
+.env.*
+!.env.example
+*.local

@@ -86,18 +86,21 @@ export function TrainMap({
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
     const map = L.map(containerRef.current, { center: NYC, zoom: 11, zoomControl: true, attributionControl: true });
-    // CARTO basemap. If a CARTO API key is provided in the environment, append it
-    // so the tiles are served against the keyed CARTO basemap account.
-    const cartoKey =
-      (import.meta as any).env?.VITE_CARTO_API_KEY ||
-      (import.meta as any).env?.VITE_CARTO_KEY ||
-      "";
-    const keyParams = cartoKey ? `?api_key=${encodeURIComponent(cartoKey)}` : "";
-    L.tileLayer(`https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png${keyParams}`, {
-      attribution: "&copy; OpenStreetMap &copy; CARTO",
-      subdomains: "abcd",
-      maxZoom: 19,
-    }).addTo(map);
+    // When served by the desktop app, basemap tiles go through a local proxy that
+    // injects the CARTO key server-side, so the key never reaches the browser. On the
+    // web build (no server) we fall back to CARTO's free anonymous tiles (no key).
+    const addTiles = (url: string, subdomains?: string) =>
+      L.tileLayer(url, { attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains: subdomains || "abcd", maxZoom: 19 }).addTo(map);
+    fetch("/__cfg", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (cfg && cfg.desktop && cfg.cartoKeyed) {
+          addTiles("/carto/{z}/{x}/{y}.png");
+        } else {
+          addTiles("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
+        }
+      })
+      .catch(() => addTiles("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"));
     // Z-order (bottom -> top): routes, station labels, trains.
     const routes = L.layerGroup().addTo(map);
     const stations = L.layerGroup().addTo(map);

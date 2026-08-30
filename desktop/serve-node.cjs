@@ -3,6 +3,7 @@
 // AVX2/SSE4.2. Serves the embedded dist/ and opens the default browser.
 "use strict";
 const http = require("node:http");
+const https = require("node:https");
 const { readFileSync, existsSync, statSync, mkdirSync, writeFileSync } = require("node:fs");
 const { join, dirname, extname } = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
@@ -82,13 +83,49 @@ function serve(fp, res) {
   } catch { res.writeHead(404); res.end("Not found"); }
 }
 
+// CARTO basemap key lives only in the server's environment, so it never ships to the
+// browser. The client asks this local endpoint for tiles; we forward to CARTO with
+// the key appended server-side and stream the result back (with a short cache).
+const CARTO_KEY = process.env["CARTO_API_KEY"] || process.env["VITE_CARTO_API_KEY"] || "";
+const tileCache = new Map();
+const MAXY = 524288;
+function proxyCartoTile(req, res) {
+  // path: /carto/{z}/{x}/{y}{r?}.png
+  const m = /^\/carto\/(\d+)\/(\d+)\/(\d+)(r)?\.png$/.exec(req.url);
+  if (!m) { res.writeHead(404); res.end("Not found"); return; }
+  if (!CARTO_KEY) { res.writeHead(503); res.end("No CARTO key configured"); return; }
+  const z = m[1], x = m[2], y = m[3];
+  const cacheKey = `${z}/${x}/${y}`;
+  const hit = tileCache.get(cacheKey);
+  if (hit) { res.writeHead(200, { "Content-Type": "image/png", "Cache-Control": "max-age=86400" }); res.end(hit); return; }
+  const upstream = `https://a.basemaps.cartocdn.com/dark_all/${z}/${x}/${y}.png?api_key=${encodeURIComponent(CARTO_KEY)}`;
+  https.get(upstream, (u) => {
+    if (u.statusCode !== 200) { res.writeHead(502); res.end("Upstream error " + u.statusCode); u.resume(); return; }
+    const chunks = [];
+    u.on("data", (c) => chunks.push(c));
+    u.on("end", () => {
+      const buf = Buffer.concat(chunks);
+      if (buf.length > MAXY) { tileCache.clear(); }
+      tileCache.set(cacheKey, buf);
+      res.writeHead(200, { "Content-Type": "image/png", "Content-Length": buf.length, "Cache-Control": "max-age=86400" });
+      res.end(buf);
+    });
+  }).on("error", (e) => { res.writeHead(502); res.end("Proxy error"); log("Tile proxy error: " + (e && e.message)); });
+}
+
 function handler(req, res) {
   const u = new URL(req.url, "http://127.0.0.1");
   if (u.pathname === "/__health") {
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ ok: true, up: Date.now() - START, version: VERSION }));
+    res.end(JSON.stringify({ ok: true, up: Date.now() - START, version: VERSION, cartoKeyed: !!CARTO_KEY }));
     return;
   }
+  if (u.pathname === "/__cfg") {
+    res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+    res.end(JSON.stringify({ desktop: true, cartoKeyed: !!CARTO_KEY }));
+    return;
+  }
+  if (u.pathname.startsWith("/carto/")) { proxyCartoTile(req, res); return; }
   let rel = decodeURIComponent(u.pathname).replace(/^\/+/, "");
   if (rel === "" || !rel.includes(".")) rel = "index.html";
   const file = join(distDir, rel);
