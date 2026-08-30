@@ -1,5 +1,6 @@
 // Generates compact static data files from the MTA's supplemented GTFS feeds:
-// stop_id -> {name, lat, lon}, route_id -> {color, short, long}, and trip_id -> headsign (LIRR/MNR).
+// stops, routes, headsigns (LIRR), and simplified route polylines (paths) per route
+// so the map can render clickable line paths for every agency.
 // Run with: bun scripts/generate-static.ts
 
 import { mkdir, writeFile } from "node:fs/promises";
@@ -22,10 +23,8 @@ function parseCSV(text) {
     for (let i = 0; i < line.length; i++) {
       const c = line[i];
       if (inQ) {
-        if (c === '"') {
-          if (line[i + 1] === '"') { cur += '"'; i++; }
-          else inQ = false;
-        } else cur += c;
+        if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else inQ = false; }
+        else cur += c;
       } else if (c === '"') inQ = true;
       else if (c === ",") { cols.push(cur); cur = ""; }
       else cur += c;
@@ -42,32 +41,51 @@ async function download(url) {
   return new Uint8Array(await r.arrayBuffer());
 }
 
-function build(name, buffer, parse) {
+function headerToRow(rows) {
+  const header = rows[0].map((h) => h.replace(/"|:$/g, "").trim());
+  return rows.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, (r[i] || "").trim()])));
+}
+
+function parseTxt(files, f) {
+  return headerToRow(parseCSV(new TextDecoder().decode(files[f])));
+}
+
+// Douglas-Peucker polyline simplification (lat/lon as [lat, lon]).
+function perpDist(p, a, b) {
+  const [px, py] = p; const [ax, ay] = a; const [bx, by] = b;
+  const dx = bx - ax, dy = by - ay;
+  if (dx === 0 && dy === 0) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+function simplify(points, tol) {
+  if (points.length < 3) return points;
+  // find point with max distance
+  let maxD = -1, idx = 0;
+  const first = points[0], last = points[points.length - 1];
+  for (let i = 1; i < points.length - 1; i++) {
+    const d = perpDist(points[i], first, last);
+    if (d > maxD) { maxD = d; idx = i; }
+  }
+  if (maxD > tol) {
+    const left = simplify(points.slice(0, idx + 1), tol);
+    const right = simplify(points.slice(idx), tol);
+    return left.slice(0, -1).concat(right);
+  }
+  return [first, last];
+}
+
+function build(name, buffer) {
   const files = unzipSync(buffer);
-  const names = Object.keys(files).filter((n) => n.endsWith(".txt"));
-  const read = (f) => new TextDecoder().decode(files[f]);
-  const colIdx = (header, key) => header.findIndex((h) => h.trim() === key);
-  const parseTxt = (f) => {
-    const rows = parseCSV(read(f));
-    return { header: rows[0].map((h) => h.replace(/"|:$/g, "").trim()), rows: rows.slice(1).map((r) => Object.fromEntries(r.map((v, i) => [rows[0].map((h) => h.replace(/"|:$/g, "").trim())[i], v.trim()]))) };
-  };
+  const result = { stops: {}, routes: {}, headsigns: {}, paths: {} };
 
-  const result = { stops: {}, routes: {}, headsigns: {} };
-
-  const stops = parseTxt("stops.txt");
-  const byId = new Map();
+  const stops = parseTxt(files, "stops.txt");
   const parentNames = {};
-  for (const s of stops.rows) {
-    byId.set(s.stop_id, s);
-    if (s.location_type === "1" && s.parent_station === "") parentNames[s.stop_id] = s.stop_name;
-  }
-  for (const s of stops.rows) {
-    const name = parentNames[s.parent_station || ""] || s.stop_name;
-    result.stops[s.stop_id] = { name, lat: Number(s.stop_lat), lon: Number(s.stop_lon) };
-  }
+  for (const s of stops) if (s.location_type === "1" && s.parent_station === "") parentNames[s.stop_id] = s.stop_name;
+  for (const s of stops) result.stops[s.stop_id] = { name: parentNames[s.parent_station || ""] || s.stop_name, lat: Number(s.stop_lat), lon: Number(s.stop_lon) };
 
-  const routes = parseTxt("routes.txt");
-  for (const r of routes.rows) {
+  const routes = parseTxt(files, "routes.txt");
+  for (const r of routes) {
     result.routes[r.route_id] = {
       color: r.route_color || "0039a6",
       text: r.route_text_color || "ffffff",
@@ -76,22 +94,49 @@ function build(name, buffer, parse) {
     };
   }
 
-  // Realtime trip_ids only match static trips.txt for LIRR (e.g. GO201_26_6702).
-  // Subway and MNR realtime trip_ids use a different scheme, so their destination
-  // names come from the terminal stop instead — drop their headsigns to keep the
-  // bundle small.
   if (name === "lirr") {
-    const trips = parseTxt("trips.txt");
-    let matched = 0;
-    for (const t of trips.rows) {
-      const hs = t.trip_headsign;
-      if (hs) { result.headsigns[t.trip_id] = hs; matched++; }
-    }
-    console.log(`   ${name}: ${Object.keys(result.stops).length} stops, ${Object.keys(result.routes).length} routes, ${matched} headsigns`);
-  } else {
-    console.log(`   ${name}: ${Object.keys(result.stops).length} stops, ${Object.keys(result.routes).length} routes (headsigns omitted)`);
+    const trips = parseTxt(files, "trips.txt");
+    for (const t of trips) { if (t.trip_headsign) result.headsigns[t.trip_id] = t.trip_headsign; }
   }
 
+  // Build route paths from shapes.txt (dedupe shapes, simplify to keep the bundle small).
+  if (files["shapes.txt"]) {
+    const shapePts = new Map();
+    for (const s of parseTxt(files, "shapes.txt")) {
+      if (!shapePts.has(s.shape_id)) shapePts.set(s.shape_id, []);
+      shapePts.get(s.shape_id).push([Number(s.shape_pt_lat), Number(s.shape_pt_lon)]);
+    }
+    // shapes.txt is already ordered by shape_pt_sequence; no sort needed.
+    // route -> set of shape_ids (from trips)
+    const routeShapes = new Map();
+    if (files["trips.txt"]) {
+      for (const t of parseTxt(files, "trips.txt")) {
+        if (!t.shape_id) continue;
+        if (!routeShapes.has(t.route_id)) routeShapes.set(t.route_id, new Set());
+        routeShapes.get(t.route_id).add(t.shape_id);
+      }
+    }
+    const dedupe = new Set();
+    const tol = name === "subway" ? 0.0009 : 0.0018; // degrees (~100m / ~200m)
+    for (const [routeId, shapes] of routeShapes) {
+      const paths = [];
+      for (const sid of shapes) {
+        const raw = shapePts.get(sid) || [];
+        if (raw.length < 2) continue;
+        const clean = raw.map((p) => [Math.round(p[0] * 1e5) / 1e5, Math.round(p[1] * 1e5) / 1e5]);
+        const key = clean.map((p) => p.join(",")).join(";");
+        if (dedupe.has(key)) continue;
+        dedupe.add(key);
+        const simp = simplify(clean, tol).map((p) => [p[0] * 1e5, p[1] * 1e5]).flat();
+        paths.push(simp); // flat array of lat1e5,lon1e5 pairs
+      }
+      if (paths.length) result.paths[routeId] = paths;
+    }
+  }
+
+  const hsKey = Object.keys(result.headsigns).length;
+  const pathKey = Object.keys(result.paths).length;
+  console.log(`   ${name}: ${Object.keys(result.stops).length} stops, ${Object.keys(result.routes).length} routes, ${hsKey} headsigns, ${pathKey} routes w/ paths`);
   return result;
 }
 

@@ -7,6 +7,8 @@ export interface StaticData {
   stops: Record<string, StopInfo>;
   routes: Record<string, RouteInfo>;
   headsigns: Record<string, string>;
+  /** routeId -> array of flat [lat*1e5, lon*1e5, ...] polylines */
+  paths: Record<string, number[][]>;
 }
 
 export const STATIC: Record<string, StaticData> = {
@@ -27,7 +29,49 @@ export function headsign(agency: string, tripId: string): string | undefined {
   return STATIC[agency]?.headsigns[tripId];
 }
 
-// All subway route colors for the legend, sorted by route id.
-export const SUBWAY_ROUTES = Object.entries(STATIC.subway.routes)
-  .map(([id, r]) => ({ id, ...r }))
-  .sort((a, b) => a.long.localeCompare(b.long));
+/** Decode route polylines into [lat, lon][] latlng arrays. */
+export function routePolyLines(agency: string, routeId: string): [number, number][][] {
+  const enc = STATIC[agency]?.paths?.[routeId];
+  if (!enc) return [];
+  const out: [number, number][][] = [];
+  for (const flat of enc) {
+    const pts: [number, number][] = [];
+    for (let i = 0; i + 1 < flat.length; i += 2) {
+      pts.push([flat[i] / 1e5, flat[i + 1] / 1e5]);
+    }
+    out.push(pts);
+  }
+  return out;
+}
+
+/** All routes usable for a per-line filter legend. */
+export interface LegendRoute {
+  agency: string;
+  routeId: string;
+  color: string;
+  short: string;
+  long: string;
+}
+
+export const ALL_ROUTES: LegendRoute[] = (["subway", "lirr", "mnr"] as const).flatMap((agency) => {
+  const data = STATIC[agency];
+  return Object.entries(data.routes).flatMap(([routeId, r]) => {
+    const hasPath = !!data.paths?.[routeId];
+    if (!hasPath) return [];
+    return [{
+      agency,
+      routeId,
+      color: `#${r.color}`,
+      short: r.short || (agency === "lirr" ? "LIRR" : "MN"),
+      long: r.long || routeId,
+    }];
+  });
+});
+
+// Human display label for a train's line.
+export function routeLabel(agency: string, routeId: string): string {
+  const r = routeInfo(agency, routeId);
+  if (!r) return routeId;
+  if (agency === "subway") return r.short || routeId;
+  return r.long || r.short || routeId;
+}
