@@ -1,7 +1,7 @@
 {
   "name": "mta-gtfs-live-tracker",
   "private": true,
-  "version": "0.1.10",
+  "version": "0.1.12",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -10,7 +10,8 @@
     "typecheck": "tsc -b --noEmit",
     "generate:static": "bun scripts/generate-static.ts",
     "update:gtfs": "bun scripts/update-static-daily.ts",
-    "build:desktop": "bun run build && bun scripts/build-desktop.ts"
+    "build:desktop": "bun run build && bun scripts/build-desktop.ts",
+    "build:apk": "bun run build && bun scripts/build-apk.ts"
   },
   "dependencies": {
     "fflate": "^0.8.2",
