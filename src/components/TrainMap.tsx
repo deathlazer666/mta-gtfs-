@@ -53,7 +53,7 @@ function popupHtml(t: Train): string {
 }
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
+  return s.replace(/[&<>\"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]!));
 }
 
 export function TrainMap({
@@ -77,7 +77,6 @@ export function TrainMap({
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
-  const basemapRef = useRef<L.TileLayer | null>(null);
   const markersRef = useRef<L.LayerGroup | null>(null);
   const routesRef = useRef<L.LayerGroup | null>(null);
   const stationsRef = useRef<L.LayerGroup | null>(null);
@@ -94,13 +93,12 @@ export function TrainMap({
       zoom: 11,
       zoomControl: true,
       attributionControl: true,
-      // MapLibre GL restricts max latitude; constrain panning to avoid sync issues.
       maxBounds: [[85, -Infinity], [-85, Infinity]] as [L.LatLngTuple, L.LatLngTuple],
       maxBoundsViscosity: 1,
       minZoom: 1,
     });
     // Full-color OSM raster basemap (free, no API key) — always color mode.
-    basemapRef.current = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: TILE_ATTRIBUTION,
       maxZoom: 19,
     }).addTo(map);
