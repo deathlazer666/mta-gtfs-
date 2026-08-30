@@ -8,7 +8,7 @@ import { RouteFilter } from "./components/RouteFilter";
 import { useLive } from "./hooks/useLive";
 import { ALL_ROUTES, routePolyLines, routeLabel, LegendRoute } from "./lib/staticData";
 import type { Agency, Train } from "./lib/types";
-import { StopCircle, MapPinned } from "lucide-react";
+import { StopCircle, MapPinned, ListFilter } from "lucide-react";
 
 const routeKey = (a: string, r: string) => `${a}:${r}`;
 
@@ -19,6 +19,7 @@ export default function App() {
   const [mapApi, setMapApi] = useState<MapImperative | null>(null);
   const [hideLayovers, setHideLayovers] = useState(false);
   const [showAllStations, setShowAllStations] = useState(false);
+  const [showBoard, setShowBoard] = useState(true);
   const [hiddenRoutes, setHiddenRoutes] = useState<Set<string>>(new Set());
   const [activeRoute, setActiveRoute] = useState<string | null>(null);
 
@@ -127,7 +128,7 @@ export default function App() {
           />
         </div>
 
-        {/* Top-left toggles: layover hide + show-all station labels */}
+        {/* Top-left toggles: layover hide + show-all station labels + train board */}
         <div className="absolute left-4 top-4 z-[510] flex items-center gap-2">
           <button
             onClick={() => setHideLayovers((h) => !h)}
@@ -144,19 +145,29 @@ export default function App() {
             <MapPinned className="h-3.5 w-3.5" />
             Station labels
           </button>
+          <button
+            onClick={() => setShowBoard((b) => !b)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur ${showBoard ? "border-accent bg-accent/15 text-accent" : "border-edge bg-panel text-[#c8cdd6]"}`}
+            title="Show or hide the Active Trains panel"
+          >
+            <ListFilter className="h-3.5 w-3.5" />
+            Board
+          </button>
         </div>
 
-        {/* Left panel: train board */}
-        <div className="absolute left-16 top-4 bottom-20 z-[500] flex w-80 flex-col">
-          <TrainTicker
-            trains={visible}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            activeRoute={activeRoute}
-            onShowRoute={clickRoute}
-            routeLabel={routeLabel}
-          />
-        </div>
+        {/* Left panel: train board (below the top-left toggles so they never overlap) */}
+        {showBoard && (
+          <div className="absolute left-4 top-14 bottom-20 z-[500] flex w-80 flex-col">
+            <TrainTicker
+              trains={visible}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              activeRoute={activeRoute}
+              onShowRoute={clickRoute}
+              routeLabel={routeLabel}
+            />
+          </div>
+        )}
 
         {/* Bottom-right: service alerts */}
         <div className="absolute bottom-4 right-4 z-[500]">
