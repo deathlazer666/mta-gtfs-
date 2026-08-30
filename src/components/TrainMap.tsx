@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { Sun, Moon, Palette } from "lucide-react";
 import type { Train } from "../lib/types";
 import { routeStops, stopInfo, STATIC } from "../lib/staticData";
 
@@ -18,23 +17,6 @@ export interface MapImperative {
 }
 
 const NYC = [40.75, -73.985] as [number, number];
-
-type MapStyle = "color" | "dark" | "light";
-
-const BASEMAPS: Record<MapStyle, { url: string; label: string }> = {
-  color: {
-    url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    label: "Color",
-  },
-  dark: {
-    url: "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-    label: "Dark",
-  },
-  light: {
-    url: "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-    label: "Light",
-  },
-};
 
 const TILE_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
@@ -99,7 +81,6 @@ export function TrainMap({
   const markersRef = useRef<L.LayerGroup | null>(null);
   const routesRef = useRef<L.LayerGroup | null>(null);
   const stationsRef = useRef<L.LayerGroup | null>(null);
-  const [mapStyle, setMapStyle] = useState<MapStyle>("color");
   const onSelectRef = useRef(onSelect);
   const onClickRouteRef = useRef(onClickRoute);
   onSelectRef.current = onSelect;
@@ -118,8 +99,8 @@ export function TrainMap({
       maxBoundsViscosity: 1,
       minZoom: 1,
     });
-    // Full-color OSM raster basemap (free, no API key) by default.
-    basemapRef.current = L.tileLayer(BASEMAPS.color.url, {
+    // Full-color OSM raster basemap (free, no API key) — always color mode.
+    basemapRef.current = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: TILE_ATTRIBUTION,
       maxZoom: 19,
     }).addTo(map);
@@ -139,20 +120,6 @@ export function TrainMap({
       stationsRef.current = null;
     };
   }, []);
-
-  // Swap basemap tiles when the style toggle changes.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !basemapRef.current) return;
-    basemapRef.current.remove();
-    const style = BASEMAPS[mapStyle];
-    basemapRef.current = L.tileLayer(style.url, {
-      attribution: TILE_ATTRIBUTION,
-      maxZoom: style.url.includes("cartocdn") ? 20 : 19,
-      subdomains: style.url.includes("cartocdn") ? "abcd" : "abc",
-    }).addTo(map);
-    basemapRef.current.bringToBack();
-  }, [mapStyle]);
 
   // Sync route polylines.
   useEffect(() => {
@@ -275,23 +242,7 @@ export function TrainMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return (
-    <div className="relative h-full w-full">
-      <div ref={containerRef} className="h-full w-full" />
-      <button
-        onClick={() =>
-          setMapStyle((s) =>
-            s === "color" ? "dark" : s === "dark" ? "light" : "color",
-          )
-        }
-        className="absolute right-4 top-4 z-[520] flex items-center gap-1.5 rounded-lg border border-edge bg-panel px-3 py-1.5 text-[11px] font-semibold shadow-lg backdrop-blur transition-colors hover:border-accent/60"
-        title="Toggle map style (Color / Dark / Light)"
-      >
-        {mapStyle === "color" ? <Palette className="h-3.5 w-3.5 text-accent" /> : mapStyle === "dark" ? <Moon className="h-3.5 w-3.5 text-accent" /> : <Sun className="h-3.5 w-3.5 text-accent" />}
-        {BASEMAPS[mapStyle].label}
-      </button>
-    </div>
-  );
+  return <div ref={containerRef} className="h-full w-full" />;
 }
 
 function routeName(r: RoutePathData): string {
